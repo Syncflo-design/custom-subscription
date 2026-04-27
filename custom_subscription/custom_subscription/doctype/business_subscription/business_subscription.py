@@ -19,14 +19,13 @@ class BusinessSubscription(Document):
 		self.next_invoice_date = next_invoice_date
 		self.last_processed_date =  frappe.utils.getdate()
 
-	def create_docs(self):
-		# for testing only
-		if self.document_type == "Sales Invoice (Draft)":
+	def create_doc(self):
+		if self.document_type == "Sales Order":
+			create_sales_order(self)
+		elif self.document_type == "Sales Invoice (Draft)":
 			create_sales_invoice(self)
 		else:
 			create_sales_invoice(self, True)
-
-		create_sales_order(self)
 
 # Get all submitted Business Subscription records whose next invoice date is today
 # For every invoice, check the document type and create the necessary record in the required docstatus

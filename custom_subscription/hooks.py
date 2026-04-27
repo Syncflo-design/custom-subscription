@@ -167,6 +167,12 @@ app_license = "mit"
 # 	],
 # }
 
+scheduler_events = {
+    "daily": [
+        "custom_subscription.subscriptions.validate_subscriptions"
+    ]
+}
+
 # Testing
 # -------
 
