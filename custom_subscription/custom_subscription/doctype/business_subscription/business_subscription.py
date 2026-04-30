@@ -6,18 +6,30 @@ from frappe.model.document import Document
 
 
 class BusinessSubscription(Document):
-	def before_save(self):
-		next_invoice_date = None
-		
-		if self.frequency == "Monthly":
-			next_invoice_date = frappe.utils.add_to_date(self.start_date, months=1)
-		elif self.frequency == "Quarterly":
-			next_invoice_date = frappe.utils.add_to_date(self.start_date, months=3)
-		elif self.frequency == "Yearly":
-			next_invoice_date = frappe.utils.add_to_date(self.start_date, years=1)
+	def before_insert(self):
+		self.next_invoice_date = self.start_date
 
+	def before_save(self):
+		self.get_next_invoice_date()
+
+	def before_update_after_submit(self):
+		self.get_next_invoice_date()
+
+	def get_next_invoice_date(self):
+		next_invoice_date = self.last_processed_date
+		
+		frappe.errprint("saving")
+		if self.frequency == "Monthly":
+			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, months=1)
+		elif self.frequency == "Quarterly":
+			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, months=3)
+		elif self.frequency == "Annually":
+			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, years=1)
+
+		frappe.msgprint(str(next_invoice_date))
 		self.next_invoice_date = next_invoice_date
-		self.last_processed_date =  frappe.utils.getdate()
+		print(self.next_invoice_date)
+		self.last_processed_date = frappe.utils.getdate()
 
 	def create_doc(self):
 		if self.document_type == "Sales Order":
@@ -54,6 +66,8 @@ def create_sales_invoice(doc, submitted=False):
 
 	if doc.send_email:
 		send_email(doc)
+	
+	doc.save()
 
 def create_sales_order(doc):
 	new_sales_order = frappe.get_doc({
@@ -76,6 +90,8 @@ def create_sales_order(doc):
 
 	if doc.send_email:
 		send_email(doc)
+	
+	doc.save()
 
 def send_email(doc):
 	if len(doc.recipients) > 0:

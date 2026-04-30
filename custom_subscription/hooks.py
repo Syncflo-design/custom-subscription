@@ -168,9 +168,14 @@ app_license = "mit"
 # }
 
 scheduler_events = {
-    "daily": [
-        "custom_subscription.subscriptions.validate_subscriptions"
-    ]
+    #"daily": [
+    #    "custom_subscription.subscriptions.validate_subscriptions"
+    #],
+    "cron": {
+        "*/5 * * * *": [
+            "custom_subscription.subscriptions.validate_subscriptions"
+        ]
+    }
 }
 
 # Testing
