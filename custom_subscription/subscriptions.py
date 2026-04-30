@@ -1,6 +1,5 @@
 import frappe
 
-@frappe.whitelist()
 def validate_subscriptions():
     business_subscriptions = frappe.get_all("Business Subscription", filters={"docstatus": 1, "next_invoice_date": frappe.utils.getdate()})
 
