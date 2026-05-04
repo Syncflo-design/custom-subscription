@@ -3,6 +3,51 @@
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import getdate, format_date, add_months, add_days, nowdate
+
+
+FREQUENCY_MONTHS = {"Monthly": 1, "Quarterly": 3, "Annually": 12}
+TEMPLATE_FIELD = {
+	"Monthly":   "custom_monthly_note_template",
+	"Quarterly": "custom_quarterly_note_template",
+	"Annually":  "custom_annually_note_template",
+}
+
+
+def get_period_start(sub, posting_date=None):
+	"""Anchor on start_date and walk forward in steps of frequency until we
+	land on the cycle that contains posting_date (default: today)."""
+	months = FREQUENCY_MONTHS.get(sub.frequency)
+	if not months:
+		return getdate(sub.start_date)
+	target = getdate(posting_date or nowdate())
+	period = getdate(sub.start_date)
+	while add_months(period, months) <= target:
+		period = add_months(period, months)
+	return period
+
+
+def build_subscription_note(sub, posting_date=None):
+	"""Render the appropriate per-frequency template into a validity sentence."""
+	months = FREQUENCY_MONTHS.get(sub.frequency)
+	if not months:
+		return ""
+	template = (sub.get(TEMPLATE_FIELD[sub.frequency]) or "").strip()
+	if not template:
+		return ""
+	period_start = get_period_start(sub, posting_date)
+	period_end   = add_days(add_months(period_start, months), -1)
+	try:
+		return template.format(
+			start_date=format_date(period_start),
+			end_date=format_date(period_end),
+			frequency=sub.frequency,
+			customer=sub.customer or "",
+			subscription_id=sub.name,
+		)
+	except (KeyError, IndexError):
+		# Bad placeholder in template — return raw rather than crash scheduler
+		return template
 
 
 class BusinessSubscription(Document):
@@ -56,6 +101,7 @@ def create_sales_invoice(doc, submitted=False):
 			"rate": item.rate
 		})
 
+	new_sales_invoice.custom_invoice_notes = build_subscription_note(doc, new_sales_invoice.posting_date)
 	new_sales_invoice.insert()
 
 	if submitted:
