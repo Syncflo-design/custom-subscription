@@ -7,6 +7,14 @@ from frappe.utils import getdate, format_date, add_months, add_days, nowdate
 
 
 FREQUENCY_MONTHS = {"Monthly": 1, "Quarterly": 3, "Annually": 12}
+FREQUENCY_STEP = {
+	# "Daily" is a UAT/testing cadence — advances the next run date by one
+	# day. Remove this entry (and the Select option) once UAT is complete.
+	"Daily":     {"days": 1},
+	"Monthly":   {"months": 1},
+	"Quarterly": {"months": 3},
+	"Annually":  {"years": 1},
+}
 TEMPLATE_FIELD = {
 	"Monthly":   "custom_monthly_note_template",
 	"Quarterly": "custom_quarterly_note_template",
@@ -52,28 +60,42 @@ def build_subscription_note(sub, posting_date=None):
 
 class BusinessSubscription(Document):
 	def before_save(self):
-		self.last_processed_date = self.start_date
-		self.next_invoice_date = self.start_date
+		# Only seed the schedule on creation. Doing this on every save
+		# (the previous behaviour) silently rewound a running subscription
+		# back to its start_date whenever anyone edited it.
+		if self.is_new():
+			if not self.last_processed_date:
+				self.last_processed_date = self.start_date
+			if not self.next_invoice_date:
+				self.next_invoice_date = self.start_date
 
 	def set_next_invoice_date(self):
-		next_invoice_date = self.last_processed_date
-		
-		if self.frequency == "Monthly":
-			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, months=1)
-		elif self.frequency == "Quarterly":
-			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, months=3)
-		elif self.frequency == "Annually":
-			next_invoice_date = frappe.utils.add_to_date(next_invoice_date, years=1)
+		# Step forward from the date we just processed (next_invoice_date),
+		# not from last_processed_date.
+		step = FREQUENCY_STEP.get(self.frequency, {"months": 1})
+		next_invoice_date = frappe.utils.add_to_date(getdate(self.next_invoice_date), **step)
+
+		# Auto-stop: once the next run would fall after the subscription's
+		# end date, clear next_invoice_date so it drops out of the daily
+		# query and never generates again.
+		if self.end_date and next_invoice_date > getdate(self.end_date):
+			next_invoice_date = None
 
 		self.next_invoice_date = next_invoice_date
-		self.last_processed_date = frappe.utils.getdate()
+		self.last_processed_date = getdate()
 
 		frappe.db.set_value("Business Subscription", self.name, {
 			"next_invoice_date": next_invoice_date,
-			"last_processed_date": frappe.utils.getdate()
+			"last_processed_date": getdate(),
 		})
 
 	def create_doc(self):
+		# Respect the end date: if this due date is already past the end
+		# date, finish the subscription without generating anything.
+		if self.end_date and getdate(self.next_invoice_date) > getdate(self.end_date):
+			frappe.db.set_value("Business Subscription", self.name, "next_invoice_date", None)
+			return
+
 		if self.document_type == "Sales Order":
 			create_sales_order(self)
 		elif self.document_type == "Sales Invoice (Draft)":
@@ -81,17 +103,17 @@ class BusinessSubscription(Document):
 		else:
 			create_sales_invoice(self, True)
 
-# Get all submitted Business Subscription records whose next invoice date is today
-# For every invoice, check the document type and create the necessary record in the required docstatus
-# Update the next invoice date of the business subscription record based on the frequency
+# Get all submitted Business Subscription records whose next invoice date is due
+# For every record, check the document type and create the necessary document in the required docstatus
+# Then advance the next invoice date based on the frequency (stopping at end_date)
 
 def create_sales_invoice(doc, submitted=False):
 	new_sales_invoice = frappe.get_doc({
 		"doctype": "Sales Invoice",
 		"company": doc.company,
 		"customer": doc.customer,
-		"posting_date": frappe.utils.getdate(),
-		"due_date": frappe.utils.getdate(),
+		"posting_date": getdate(),
+		"due_date": getdate(),
 	})
 
 	for item in doc.items:
@@ -108,8 +130,8 @@ def create_sales_invoice(doc, submitted=False):
 		new_sales_invoice.submit()
 
 	if doc.send_email:
-		send_email(doc)
-	
+		send_email(doc, new_sales_invoice)
+
 	doc.set_next_invoice_date()
 
 def create_sales_order(doc):
@@ -117,8 +139,8 @@ def create_sales_order(doc):
 		"doctype": "Sales Order",
 		"company": doc.company,
 		"customer": doc.customer,
-		"transaction_date": frappe.utils.getdate(),
-		"delivery_date": frappe.utils.getdate(),
+		"transaction_date": getdate(),
+		"delivery_date": getdate(),
 		"order_type": "Sales"
 	})
 
@@ -132,23 +154,39 @@ def create_sales_order(doc):
 	new_sales_order.insert().submit()
 
 	if doc.send_email:
-		send_email(doc)
-	
+		send_email(doc, new_sales_order)
+
 	doc.set_next_invoice_date()
 
-def send_email(doc):
-	if len(doc.recipients) > 0:
-		recipients = [recipient.email for recipient in doc.recipients]
-		
-		frappe.sendmail(
-			recipients=recipients,
-			subject=doc.subject,
-			message=doc.message,
-			attachments=[
-				frappe.attach_print(
-					doc.doctype,
-					doc.name,
-					print_format=doc.print_format
-				)
-			]
+def send_email(sub, target_doc):
+	"""Notify the recipients that a document was generated, attaching the
+	*generated document* (not the subscription itself, which was the bug)."""
+	if not sub.recipients:
+		return
+
+	recipients = [r.email for r in sub.recipients if r.email]
+	if not recipients:
+		return
+
+	attachments = []
+	try:
+		attachments = [frappe.attach_print(
+			target_doc.doctype,
+			target_doc.name,
+			print_format=sub.print_format or None,
+		)]
+	except Exception:
+		# A bad/missing print format must not stop the notification or the run
+		frappe.log_error(
+			title="Custom Subscription: attach_print failed",
+			message="{0} -> {1} {2}\n\n{3}".format(
+				sub.name, target_doc.doctype, target_doc.name, frappe.get_traceback()
+			),
 		)
+
+	frappe.sendmail(
+		recipients=recipients,
+		subject=sub.subject or "{0} {1}".format(target_doc.doctype, target_doc.name),
+		message=sub.message or "",
+		attachments=attachments,
+	)
