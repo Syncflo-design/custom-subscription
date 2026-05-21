@@ -168,14 +168,14 @@ app_license = "mit"
 # }
 
 scheduler_events = {
-    "daily": [
-        "custom_subscription.subscriptions.validate_subscriptions"
-    ],
-    #"cron": {
-    #    "*/5 * * * *": [
-    #        "custom_subscription.subscriptions.validate_subscriptions"
-    #    ]
-    #}
+    # Run at 07:00 site time (Africa/Johannesburg) every day, so confirmations
+    # and invoices never go out overnight. Frappe evaluates cron in the site's
+    # timezone (System Settings > Time Zone). Adjust the "7" to change the hour.
+    "cron": {
+        "0 7 * * *": [
+            "custom_subscription.subscriptions.validate_subscriptions"
+        ]
+    }
 }
 
 # Testing

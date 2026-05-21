@@ -184,9 +184,16 @@ def send_email(sub, target_doc):
 			),
 		)
 
+	# Add a direct link so recipients can open the generated document.
+	link = frappe.utils.get_url_to_form(target_doc.doctype, target_doc.name)
+	message = (sub.message or "") + (
+		'<p style="margin-top:12px">'
+		'<a href="{0}">Open {1} {2} &rarr;</a></p>'
+	).format(link, target_doc.doctype, target_doc.name)
+
 	frappe.sendmail(
 		recipients=recipients,
 		subject=sub.subject or "{0} {1}".format(target_doc.doctype, target_doc.name),
-		message=sub.message or "",
+		message=message,
 		attachments=attachments,
 	)
