@@ -21,6 +21,27 @@ TEMPLATE_FIELD = {
 	"Annually":  "custom_annually_note_template",
 }
 
+# Appended to every outgoing subscription email. Edit the details here; a
+# code deploy picks up the change. Kept as plain inline-styled HTML so it
+# renders consistently across mail clients without relying on the portal.
+EMAIL_SIGNATURE = (
+	'<br>'
+	'<table style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;'
+	'font-size:12px;color:#444444;line-height:1.5">'
+	'<tr><td style="padding-bottom:8px">'
+	'<img src="https://www.nesterp.co.za/files/SyncfloLogo_small.png" '
+	'alt="Syncflo" width="180" '
+	'style="display:block;border:0;outline:none;max-width:180px;height:auto">'
+	'</td></tr>'
+	'<tr><td>'
+	'<strong style="color:#111111">Syncflo (Pty) Ltd</strong><br>'
+	'Accounts Team<br>'
+	'<a href="mailto:accounts@syncflo.co.za" style="color:#1a73e8;text-decoration:none">accounts@syncflo.co.za</a>'
+	'&nbsp;&nbsp;|&nbsp;&nbsp;'
+	'<a href="https://www.syncflo.co.za" style="color:#1a73e8;text-decoration:none">www.syncflo.co.za</a>'
+	'</td></tr></table>'
+)
+
 
 def get_period_start(sub, posting_date=None):
 	"""Anchor on start_date and walk forward in steps of frequency until we
@@ -184,12 +205,9 @@ def send_email(sub, target_doc):
 			),
 		)
 
-	# Add a direct link so recipients can open the generated document.
-	link = frappe.utils.get_url_to_form(target_doc.doctype, target_doc.name)
-	message = (sub.message or "") + (
-		'<p style="margin-top:12px">'
-		'<a href="{0}">Open {1} {2} &rarr;</a></p>'
-	).format(link, target_doc.doctype, target_doc.name)
+	# No "view online" link: customers have no portal access yet. The
+	# generated document travels as the PDF attachment above.
+	message = (sub.message or "") + EMAIL_SIGNATURE
 
 	frappe.sendmail(
 		recipients=recipients,
