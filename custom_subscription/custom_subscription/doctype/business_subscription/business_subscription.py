@@ -144,7 +144,9 @@ def create_sales_invoice(doc, submitted=False):
 			"rate": item.rate
 		})
 
-	new_sales_invoice.custom_invoice_notes = build_subscription_note(doc, new_sales_invoice.posting_date)
+	# Period note keys off the validity date (next_invoice_date), not the
+	# posting/send date — the invoice may be generated up to advance_days early.
+	new_sales_invoice.custom_invoice_notes = build_subscription_note(doc, doc.next_invoice_date)
 	new_sales_invoice.insert()
 
 	if submitted:
