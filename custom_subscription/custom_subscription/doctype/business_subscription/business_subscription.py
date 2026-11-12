@@ -244,15 +244,15 @@ def send_email(sub, target_doc, attach_statement=None):
 
 @frappe.whitelist()
 def resend_email(name, document_name, attach_statement=None):
-	"""Re-send a subscription email for an already generated document, to the
-	subscription's recipients. The statement follows the subscription's
-	setting unless attach_statement is passed."""
+	"""Re-send the subscription email for an existing Sales Invoice (called from
+	the invoice form) to the subscription's recipients. The statement follows
+	the subscription's setting unless attach_statement is passed."""
 	sub = frappe.get_doc("Business Subscription", name)
 	sub.check_permission("write")
 	if sub.docstatus != 1:
 		frappe.throw(_("Subscription {0} is not submitted").format(name))
 
-	doctype = "Sales Order" if sub.document_type == "Sales Order" else "Sales Invoice"
+	doctype = "Sales Invoice"
 	target = frappe.get_doc(doctype, document_name)
 	if target.docstatus == 2 or target.customer != sub.customer or target.company != sub.company:
 		frappe.throw(_("{0} {1} is cancelled or is not for {2} / {3}").format(
