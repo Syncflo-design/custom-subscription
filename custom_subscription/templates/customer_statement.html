@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ _("Statement of Account") }} - {{ customer_name }}</title>
+<style>{{ print_css }}</style>
+<style>
+	body { margin: 0; padding: 0; background: #ffffff; }
+	.statement { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; color: #171717; font-size: 11px; line-height: 16px; }
+	.statement .letter-head { margin-bottom: 4mm; }
+	.statement h4.doc-title { margin: 6px 0 8px 0; font-size: 15px; text-align: center; font-weight: 600; }
+	.statement table { width: 100%; }
+	table.info-table, table.lines-table { border-collapse: separate; border-spacing: 0; border: 1px solid #ededed; border-radius: 10px; overflow: hidden; }
+	table.info-table td { border-bottom: 1px solid #ededed; padding: 4px 8px; line-height: 1.4; vertical-align: top; }
+	table.lines-table td { border-bottom: 1px solid #ededed; padding: 4px 6px; line-height: 1.35; }
+	table.lines-table tr { page-break-inside: avoid; }
+	table.info-table td + td, table.lines-table td + td { border-left: 1px solid #ededed; }
+	table.info-table tr:last-child td, table.lines-table tbody tr:last-child td { border-bottom: none; }
+	table.lines-table thead td { background: #f8f8f8; color: #7c7c7c; }
+	table.lines-table tr.balance-row td { background: #fbfbfb; font-weight: 600; }
+	table.summary-table { border-collapse: collapse; }
+	table.summary-table td { padding: 3px 8px; border-bottom: 1px solid #ededed; }
+	table.summary-table tr:last-child td { border-bottom: none; }
+	table.summary-table tr.grand-total td { padding: 5px 8px; font-weight: bold; font-size: 12px; }
+	.heading { color: #525252; font-weight: 300; }
+	.text-right { text-align: right; }
+	.text-muted { color: #7c7c7c; }
+	.nowrap { white-space: nowrap; }
+	.amount { width: 100px; text-align: right; white-space: nowrap; }
+	.mt { margin-top: 8px; }
+	.bank-box { background: #f8f8f8; border-radius: 8px; padding: 5px 10px; font-size: 10px; line-height: 1.45; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="statement">
+
+	{% if letter_head %}<div class="letter-head">{{ letter_head }}</div>{% endif %}
+
+	<h4 class="doc-title">{{ _("Statement of Account") }}</h4>
+
+	<table class="info-table">
+		<tr>
+			<td style="width: 50%"><span class="heading">{{ _("Customer Name") }}:</span> {{ customer_name }}</td>
+			<td style="width: 50%"><span class="heading">{{ _("Statement Date") }}:</span> {{ frappe.utils.format_date(to_date) }}</td>
+		</tr>
+		<tr>
+			<td><span class="heading">{{ _("Period") }}:</span> {{ frappe.utils.format_date(from_date) }} {{ _("to") }} {{ frappe.utils.format_date(to_date) }}</td>
+			<td><span class="heading">{{ _("Currency") }}:</span> {{ currency }}</td>
+		</tr>
+		<tr>
+			<td>
+				<span class="heading">{{ _("From") }}:</span><br>
+				<strong>{{ company }}</strong><br>
+				Lahle Crescent,<br>
+				Waterfall<br>
+				3652<br>
+				Durban<br>
+				<a href="mailto:accounts@syncflo.co.za">accounts@syncflo.co.za</a>
+			</td>
+			<td>
+				<span class="heading">{{ _("To") }}:</span><br>
+				<strong>{{ customer_name }}</strong><br>
+				{{ customer_address }}
+			</td>
+		</tr>
+	</table>
+
+	<table class="lines-table mt">
+		<thead>
+			<tr>
+				<td class="nowrap" style="width: 80px">{{ _("Date") }}</td>
+				<td style="width: 90px">{{ _("Type") }}</td>
+				<td>{{ _("Reference") }}</td>
+				<td class="amount">{{ _("Debit") }}</td>
+				<td class="amount">{{ _("Credit") }}</td>
+				<td class="amount">{{ _("Balance") }}</td>
+			</tr>
+		</thead>
+		<tbody>
+			<tr class="balance-row">
+				<td class="nowrap">{{ frappe.utils.format_date(from_date) }}</td>
+				<td colspan="4">{{ _("Opening Balance") }}</td>
+				<td class="amount">{{ frappe.utils.fmt_money(opening, currency=currency) }}</td>
+			</tr>
+			{% for row in rows %}
+			<tr>
+				<td class="nowrap">{{ frappe.utils.format_date(row.posting_date) }}</td>
+				<td>{{ row.label }}</td>
+				<td>{{ row.voucher_no }}</td>
+				<td class="amount">{% if row.debit %}{{ frappe.utils.fmt_money(row.debit, currency=currency) }}{% endif %}</td>
+				<td class="amount">{% if row.credit %}{{ frappe.utils.fmt_money(row.credit, currency=currency) }}{% endif %}</td>
+				<td class="amount">{{ frappe.utils.fmt_money(row.balance, currency=currency) }}</td>
+			</tr>
+			{% else %}
+			<tr>
+				<td colspan="6" class="text-muted">{{ _("No transactions in this period.") }}</td>
+			</tr>
+			{% endfor %}
+			<tr class="balance-row">
+				<td class="nowrap">{{ frappe.utils.format_date(to_date) }}</td>
+				<td colspan="4">{{ _("Closing Balance") }}</td>
+				<td class="amount">{{ frappe.utils.fmt_money(closing, currency=currency) }}</td>
+			</tr>
+		</tbody>
+	</table>
+
+	<table class="mt">
+		<tr>
+			<td style="width: 58%">&nbsp;</td>
+			<td style="width: 42%">
+				<table class="summary-table">
+					<tr>
+						<td class="text-right text-muted">{{ _("Opening Balance") }}:</td>
+						<td class="amount">{{ frappe.utils.fmt_money(opening, currency=currency) }}</td>
+					</tr>
+					<tr>
+						<td class="text-right text-muted">{{ _("Invoiced") }}:</td>
+						<td class="amount">{{ frappe.utils.fmt_money(total_debit, currency=currency) }}</td>
+					</tr>
+					<tr>
+						<td class="text-right text-muted">{{ _("Payments and Credits") }}:</td>
+						<td class="amount">- {{ frappe.utils.fmt_money(total_credit, currency=currency) }}</td>
+					</tr>
+					<tr class="grand-total">
+						<td class="text-right">{% if closing < 0 %}{{ _("Credit Balance") }}{% else %}{{ _("Balance Due") }}{% endif %}:</td>
+						<td class="amount">{{ frappe.utils.fmt_money(closing|abs, currency=currency) }}</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div class="bank-box">
+		<strong>Banking Details</strong><br>
+		<strong>Bank:</strong> First National Bank &nbsp;|&nbsp;
+		<strong>Account Name:</strong> Syncflo (Pty) Ltd &nbsp;|&nbsp;
+		<strong>Account No:</strong> 62903101343 &nbsp;|&nbsp;
+		<strong>Branch Code:</strong> 223726 &nbsp;|&nbsp;
+		<strong>SWIFT:</strong> FIRNZAJJ
+	</div>
+
+</div>
+</body>
+</html>

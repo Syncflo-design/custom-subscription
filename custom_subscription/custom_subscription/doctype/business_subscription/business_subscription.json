@@ -25,6 +25,7 @@
   "total",
   "section_break_qjhb",
   "send_email",
+  "attach_statement",
   "recipients",
   "subject",
   "message",
@@ -172,6 +173,15 @@
   },
   {
    "allow_on_submit": 1,
+   "default": "0",
+   "depends_on": "send_email",
+   "fieldname": "attach_statement",
+   "fieldtype": "Check",
+   "label": "Attach Customer Statement",
+   "description": "Attach the customer's statement of account for the last 12 months (to the end of the previous month) to the invoice email."
+  },
+  {
+   "allow_on_submit": 1,
    "fieldname": "end_date",
    "fieldtype": "Date",
    "label": "Subscription End Date",
@@ -182,7 +192,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-20 19:30:00.000000",
+ "modified": "2026-11-12 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Custom Subscription",
  "name": "Business Subscription",

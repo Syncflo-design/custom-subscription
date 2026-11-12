@@ -2,9 +2,11 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
-from frappe.utils import getdate, format_date, add_months, add_days, nowdate
+from frappe.utils import add_days, add_months, cint, format_date, getdate, nowdate
 
+from custom_subscription.statement import get_statement_attachment
 
 FREQUENCY_MONTHS = {"Monthly": 1, "Quarterly": 3, "Annually": 12}
 FREQUENCY_STEP = {
@@ -181,15 +183,22 @@ def create_sales_order(doc):
 
 	doc.set_next_invoice_date()
 
-def send_email(sub, target_doc):
+def send_email(sub, target_doc, attach_statement=None):
 	"""Notify the recipients that a document was generated, attaching the
-	*generated document* (not the subscription itself, which was the bug)."""
+	*generated document* (not the subscription itself, which was the bug).
+
+	With attach_statement (default: the subscription's own setting), the
+	customer's statement for the 12 months to the end of the month before the
+	document's date goes in the same email."""
 	if not sub.recipients:
 		return
 
 	recipients = [r.email for r in sub.recipients if r.email]
 	if not recipients:
 		return
+
+	if attach_statement is None:
+		attach_statement = sub.get("attach_statement")
 
 	attachments = []
 	try:
@@ -207,6 +216,20 @@ def send_email(sub, target_doc):
 			),
 		)
 
+	if attach_statement:
+		try:
+			attachments.append(get_statement_attachment(
+				sub.company,
+				sub.customer,
+				target_doc.get("posting_date") or target_doc.get("transaction_date"),
+			))
+		except Exception:
+			# A statement failure must not hold back the invoice email
+			frappe.log_error(
+				title="Custom Subscription: statement failed",
+				message="{0} -> {1}\n\n{2}".format(sub.name, sub.customer, frappe.get_traceback()),
+			)
+
 	# No "view online" link: customers have no portal access yet. The
 	# generated document travels as the PDF attachment above.
 	message = (sub.message or "") + EMAIL_SIGNATURE
@@ -217,3 +240,28 @@ def send_email(sub, target_doc):
 		message=message,
 		attachments=attachments,
 	)
+
+
+@frappe.whitelist()
+def resend_email(name, document_name, attach_statement=None):
+	"""Re-send a subscription email for an already generated document, to the
+	subscription's recipients. The statement follows the subscription's
+	setting unless attach_statement is passed."""
+	sub = frappe.get_doc("Business Subscription", name)
+	sub.check_permission("write")
+	if sub.docstatus != 1:
+		frappe.throw(_("Subscription {0} is not submitted").format(name))
+
+	doctype = "Sales Order" if sub.document_type == "Sales Order" else "Sales Invoice"
+	target = frappe.get_doc(doctype, document_name)
+	if target.docstatus == 2 or target.customer != sub.customer or target.company != sub.company:
+		frappe.throw(_("{0} {1} is cancelled or is not for {2} / {3}").format(
+			doctype, document_name, sub.customer, sub.company
+		))
+
+	recipients = [r.email for r in sub.recipients if r.email]
+	if not recipients:
+		frappe.throw(_("Subscription {0} has no recipients").format(name))
+
+	send_email(sub, target, cint(sub.get("attach_statement") if attach_statement is None else attach_statement))
+	return recipients
