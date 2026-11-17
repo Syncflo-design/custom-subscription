@@ -1,11 +1,11 @@
-"""Tell Data Fusion when a subscription invoice is paid, so the customer's
-access (CompanyMaster.UseEndDate) runs to the end of the period paid for.
+"""Tell a subscription's app (Data Fusion, and any app added later) when its
+invoice is paid, so the app can extend the customer's access to the end of the
+period paid for.
 
-Site config (bench --site <site> set-config <key> <value>):
-    datafusion_webhook_url     e.g. https://<host>/za/PaymentNotify.ashx
-    datafusion_webhook_secret  same value as PaymentWebhookSecret in Data Fusion's Web.config
-
-Safe to repeat: Data Fusion only ever moves the date forward.
+Each app is a Subscription App record: endpoint URL + secret. The app receives
+a POST of JSON {"invoice", "account_ids", "paid_to"} with the hex HMAC-SHA256
+of the body (keyed by the secret) in the X-Subscription-Signature header, and
+answers 200 when done. Safe to repeat: apps only ever move the end date forward.
 """
 
 import hashlib
@@ -18,8 +18,8 @@ from frappe.utils import getdate, today
 
 
 def payment_entry_on_submit(doc, method=None):
-	"""Payment Entry hook: once the payment is committed, notify Data Fusion
-	for every Sales Invoice it paid."""
+	"""Payment Entry hook: once the payment is committed, notify the app of
+	every subscription invoice it paid."""
 	invoices = list({
 		r.reference_name for r in doc.references
 		if r.reference_doctype == "Sales Invoice" and r.reference_name
@@ -34,7 +34,7 @@ def payment_entry_on_submit(doc, method=None):
 
 def push_current_periods():
 	"""Daily catch-up: re-send every paid subscription invoice whose period has
-	not ended, in case Data Fusion was unreachable when the payment came in."""
+	not ended, in case an app was unreachable when the payment came in."""
 	notify_invoices(frappe.get_all(
 		"Sales Invoice",
 		filters={
@@ -53,7 +53,7 @@ def notify_invoices(invoices):
 			notify_invoice(name)
 		except Exception:
 			frappe.log_error(
-				title="Data Fusion: payment notify failed",
+				title="Subscription App: payment notify failed",
 				message="{0}\n\n{1}".format(name, frappe.get_traceback()),
 			)
 
@@ -69,30 +69,37 @@ def notify_invoice(name):
 	if not inv.to_date or not inv.custom_business_subscription:
 		return
 
-	ids = frappe.db.get_value(
-		"Business Subscription", inv.custom_business_subscription, "datafusion_company_ids"
-	) or ""
-	company_ids = [i.strip() for i in ids.split(",") if i.strip()]
-	if not company_ids:
+	sub = frappe.db.get_value(
+		"Business Subscription", inv.custom_business_subscription,
+		["subscription_app", "app_account_ids"],
+		as_dict=True,
+	)
+	if not sub or not sub.subscription_app:
+		return
+	account_ids = [i.strip() for i in (sub.app_account_ids or "").split(",") if i.strip()]
+	if not account_ids:
 		return
 
-	url = frappe.conf.get("datafusion_webhook_url")
-	secret = frappe.conf.get("datafusion_webhook_secret")
-	if not url or not secret:
-		frappe.throw("datafusion_webhook_url / datafusion_webhook_secret missing from site config")
+	app = frappe.get_doc("Subscription App", sub.subscription_app)
+	if not app.enabled:
+		return
 
 	body = json.dumps({
 		"invoice": name,
-		"company_ids": company_ids,
+		"account_ids": account_ids,
 		"paid_to": str(getdate(inv.to_date)),
 	}, separators=(",", ":")).encode("utf-8")
-	signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+	signature = hmac.new(
+		app.get_password("webhook_secret").encode("utf-8"), body, hashlib.sha256
+	).hexdigest()
 
 	response = requests.post(
-		url,
+		app.endpoint_url,
 		data=body,
-		headers={"Content-Type": "application/json", "X-DataFusion-Signature": signature},
+		headers={"Content-Type": "application/json", "X-Subscription-Signature": signature},
 		timeout=30,
 	)
 	if response.status_code != 200:
-		frappe.throw("Data Fusion answered {0}: {1}".format(response.status_code, response.text[:500]))
+		frappe.throw("{0} answered {1}: {2}".format(
+			app.name, response.status_code, response.text[:500]
+		))

@@ -145,8 +145,8 @@ def create_sales_invoice(doc, submitted=False):
 		"custom_business_subscription": doc.name,
 	})
 
-	# The period the invoice pays for. Data Fusion access runs to to_date
-	# once the invoice is paid (custom_subscription.datafusion).
+	# The period the invoice pays for. Once the invoice is paid, the
+	# subscription's app extends access to to_date (custom_subscription.datafusion).
 	months = FREQUENCY_MONTHS.get(doc.frequency)
 	if months:
 		new_sales_invoice.from_date = period_start

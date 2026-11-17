@@ -147,7 +147,8 @@ doctype_js = {"Sales Invoice": "public/js/sales_invoice.js"}
 # }
 
 doc_events = {
-    # A paid subscription invoice extends the customer's Data Fusion access.
+    # A paid subscription invoice extends the customer's access in its app
+    # (Subscription App: Data Fusion and any app added later).
     "Payment Entry": {
         "on_submit": "custom_subscription.datafusion.payment_entry_on_submit"
     }

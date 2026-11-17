@@ -17,7 +17,8 @@
   "last_processed_date",
   "next_invoice_date",
   "advance_days",
-  "datafusion_company_ids",
+  "subscription_app",
+  "app_account_ids",
   "section_break_otxq",
   "items",
   "section_break_qrdj",
@@ -86,10 +87,19 @@
   },
   {
    "allow_on_submit": 1,
-   "fieldname": "datafusion_company_ids",
+   "fieldname": "subscription_app",
+   "fieldtype": "Link",
+   "label": "App",
+   "options": "Subscription App",
+   "description": "The app this subscription pays for. When an invoice is paid, the app is told so it can extend access to the end of the invoiced period."
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "subscription_app",
+   "fieldname": "app_account_ids",
    "fieldtype": "Data",
-   "label": "Data Fusion Company ID(s)",
-   "description": "Sage company ID(s), comma separated. When an invoice from this subscription is paid, Data Fusion access for these companies runs to the end of the invoiced period."
+   "label": "Account ID(s)",
+   "description": "The customer's ID(s) in that app, comma separated (Data Fusion: Sage company ID)."
   },
   {
    "fieldname": "total_quantity",
@@ -210,7 +220,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-17 12:00:00.000000",
+ "modified": "2026-11-17 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Custom Subscription",
  "name": "Business Subscription",
