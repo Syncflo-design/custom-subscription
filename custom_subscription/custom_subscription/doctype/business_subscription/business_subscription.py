@@ -1,10 +1,12 @@
 # Copyright (c) 2026, Chipo Hameja and contributors
 # For license information, please see license.txt
 
+from html import escape
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, add_months, cint, format_date, getdate, nowdate
+from frappe.utils import add_days, add_months, cint, flt, format_date, getdate, nowdate
 
 from custom_subscription.statement import get_statement_attachment
 
@@ -131,13 +133,24 @@ class BusinessSubscription(Document):
 # Then advance the next invoice date based on the frequency (stopping at end_date)
 
 def create_sales_invoice(doc, submitted=False):
+	# Due on the first day of the period it pays for (never before today: a
+	# missed scheduler day can run after that date).
+	period_start = getdate(doc.next_invoice_date)
 	new_sales_invoice = frappe.get_doc({
 		"doctype": "Sales Invoice",
 		"company": doc.company,
 		"customer": doc.customer,
 		"posting_date": getdate(),
-		"due_date": getdate(),
+		"due_date": max(getdate(), period_start),
+		"custom_business_subscription": doc.name,
 	})
+
+	# The period the invoice pays for. Data Fusion access runs to to_date
+	# once the invoice is paid (custom_subscription.datafusion).
+	months = FREQUENCY_MONTHS.get(doc.frequency)
+	if months:
+		new_sales_invoice.from_date = period_start
+		new_sales_invoice.to_date = add_days(add_months(period_start, months), -1)
 
 	for item in doc.items:
 		new_sales_invoice.append("items", {
@@ -232,7 +245,7 @@ def send_email(sub, target_doc, attach_statement=None):
 
 	# No "view online" link: customers have no portal access yet. The
 	# generated document travels as the PDF attachment above.
-	message = (sub.message or "") + EMAIL_SIGNATURE
+	message = (sub.message or "") + pay_link_html(sub, target_doc) + EMAIL_SIGNATURE
 
 	frappe.sendmail(
 		recipients=recipients,
@@ -240,6 +253,44 @@ def send_email(sub, target_doc, attach_statement=None):
 		message=message,
 		attachments=attachments,
 	)
+
+
+def pay_link_html(sub, target_doc):
+	"""A Paystack "Pay now" button for a submitted, unpaid Sales Invoice, or ""
+	when the subscription has no pay link, Paystack is not installed or set up,
+	or the link fails. A pay link problem never holds back the invoice email."""
+	if not sub.get("include_pay_link"):
+		return ""
+	if target_doc.doctype != "Sales Invoice" or target_doc.docstatus != 1:
+		return ""
+	if flt(target_doc.outstanding_amount) <= 0:
+		return ""
+	if "frappe_paystack" not in frappe.get_installed_apps():
+		return ""
+
+	try:
+		from frappe_paystack.api import create_payment_link
+
+		# Re-uses the invoice's open Payment Request, so a re-send gives the same link.
+		url = create_payment_link("Sales Invoice", target_doc.name)
+	except Exception:
+		frappe.log_error(
+			title="Custom Subscription: pay link failed",
+			message="{0} -> {1}\n\n{2}".format(sub.name, target_doc.name, frappe.get_traceback()),
+		)
+		return ""
+
+	if not url:
+		return ""
+
+	return (
+		'<p style="margin:20px 0">'
+		'<a href="{0}" style="background:#1a73e8;color:#ffffff;padding:10px 22px;'
+		'border-radius:4px;text-decoration:none;font-family:Arial,Helvetica,sans-serif;'
+		'font-weight:bold">Pay now</a></p>'
+		'<p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#666666">'
+		'Card or Instant EFT, secured by Paystack.</p>'
+	).format(escape(url))
 
 
 @frappe.whitelist()

@@ -146,6 +146,13 @@ doctype_js = {"Sales Invoice": "public/js/sales_invoice.js"}
 # 	}
 # }
 
+doc_events = {
+    # A paid subscription invoice extends the customer's Data Fusion access.
+    "Payment Entry": {
+        "on_submit": "custom_subscription.datafusion.payment_entry_on_submit"
+    }
+}
+
 # Scheduled Tasks
 # ---------------
 
@@ -173,7 +180,8 @@ scheduler_events = {
     # timezone (System Settings > Time Zone). Adjust the "7" to change the hour.
     "cron": {
         "0 7 * * *": [
-            "custom_subscription.subscriptions.validate_subscriptions"
+            "custom_subscription.subscriptions.validate_subscriptions",
+            "custom_subscription.datafusion.push_current_periods",
         ]
     }
 }

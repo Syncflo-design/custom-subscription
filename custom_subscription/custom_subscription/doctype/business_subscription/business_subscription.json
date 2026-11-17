@@ -17,6 +17,7 @@
   "last_processed_date",
   "next_invoice_date",
   "advance_days",
+  "datafusion_company_ids",
   "section_break_otxq",
   "items",
   "section_break_qrdj",
@@ -26,6 +27,7 @@
   "section_break_qjhb",
   "send_email",
   "attach_statement",
+  "include_pay_link",
   "recipients",
   "subject",
   "message",
@@ -81,6 +83,13 @@
    "fieldtype": "Int",
    "label": "Send Days In Advance",
    "description": "Generate and email the invoice this many days before its validity date (Next Invoice Date). Default 7. The invoice period/validity still uses Next Invoice Date."
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "datafusion_company_ids",
+   "fieldtype": "Data",
+   "label": "Data Fusion Company ID(s)",
+   "description": "Sage company ID(s), comma separated. When an invoice from this subscription is paid, Data Fusion access for these companies runs to the end of the invoiced period."
   },
   {
    "fieldname": "total_quantity",
@@ -182,6 +191,15 @@
   },
   {
    "allow_on_submit": 1,
+   "default": "0",
+   "depends_on": "send_email",
+   "fieldname": "include_pay_link",
+   "fieldtype": "Check",
+   "label": "Include Pay Link",
+   "description": "Add a Paystack \"Pay now\" link to the invoice email (submitted Sales Invoices only, once Paystack is set up for the company)."
+  },
+  {
+   "allow_on_submit": 1,
    "fieldname": "end_date",
    "fieldtype": "Date",
    "label": "Subscription End Date",
@@ -192,7 +210,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-12 16:00:00.000000",
+ "modified": "2026-11-17 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Custom Subscription",
  "name": "Business Subscription",
