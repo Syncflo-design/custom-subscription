@@ -29,6 +29,7 @@
   "send_email",
   "attach_statement",
   "include_pay_link",
+  "auto_charge",
   "recipients",
   "subject",
   "message",
@@ -210,6 +211,14 @@
   },
   {
    "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "auto_charge",
+   "fieldtype": "Check",
+   "label": "Auto-charge Saved Card",
+   "description": "Charge the customer's saved Paystack card (kept from their last card payment) when the invoice is created. With no saved card, or a declined one, the invoice goes out unpaid as usual, with its pay link if ticked."
+  },
+  {
+   "allow_on_submit": 1,
    "fieldname": "end_date",
    "fieldtype": "Date",
    "label": "Subscription End Date",
@@ -220,7 +229,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-17 13:00:00.000000",
+ "modified": "2026-11-17 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Custom Subscription",
  "name": "Business Subscription",

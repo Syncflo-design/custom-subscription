@@ -167,10 +167,15 @@ def create_sales_invoice(doc, submitted=False):
 	if submitted:
 		new_sales_invoice.submit()
 
-	if doc.send_email:
-		send_email(doc, new_sales_invoice)
-
+	# Advance the schedule before any card charge: Paystack commits part-way
+	# through a charge, so the run date must already have moved or a later
+	# failure in this run could raise a second invoice tomorrow.
 	doc.set_next_invoice_date()
+
+	paid_card = auto_charge(doc, new_sales_invoice)
+
+	if doc.send_email:
+		send_email(doc, new_sales_invoice, paid_card=paid_card)
 
 def create_sales_order(doc):
 	new_sales_order = frappe.get_doc({
@@ -196,7 +201,39 @@ def create_sales_order(doc):
 
 	doc.set_next_invoice_date()
 
-def send_email(sub, target_doc, attach_statement=None):
+def auto_charge(sub, invoice):
+	"""Charge the customer's saved Paystack card for a new subscription invoice.
+	Returns the card's last 4 digits when Paystack took the money, else "". A
+	missing or declined card, or any error, leaves the invoice unpaid as usual.
+	Paystack's webhook then books the payment, which extends the app access."""
+	if not sub.get("auto_charge"):
+		return ""
+	if invoice.docstatus != 1 or flt(invoice.outstanding_amount) <= 0:
+		return ""
+	if "frappe_paystack" not in frappe.get_installed_apps():
+		return ""
+
+	try:
+		from frappe_paystack.api import charge_saved_card
+		from frappe_paystack.frappe_paystack.doctype.paystack_customer_authorization.paystack_customer_authorization import (
+			usable_authorizations,
+		)
+
+		cards = usable_authorizations(invoice.customer, invoice.company)
+		if not cards:
+			return ""
+		# Throws unless Paystack captured the money outright.
+		charge_saved_card("Sales Invoice", invoice.name, cards[0].name)
+		return cards[0].last4 or "****"
+	except Exception:
+		frappe.log_error(
+			title="Custom Subscription: auto-charge failed",
+			message="{0} -> {1}\n\n{2}".format(sub.name, invoice.name, frappe.get_traceback()),
+		)
+		return ""
+
+
+def send_email(sub, target_doc, attach_statement=None, paid_card=""):
 	"""Notify the recipients that a document was generated, attaching the
 	*generated document* (not the subscription itself, which was the bug).
 
@@ -245,7 +282,7 @@ def send_email(sub, target_doc, attach_statement=None):
 
 	# No "view online" link: customers have no portal access yet. The
 	# generated document travels as the PDF attachment above.
-	message = (sub.message or "") + pay_link_html(sub, target_doc) + EMAIL_SIGNATURE
+	message = (sub.message or "") + pay_link_html(sub, target_doc, paid_card) + EMAIL_SIGNATURE
 
 	frappe.sendmail(
 		recipients=recipients,
@@ -255,10 +292,16 @@ def send_email(sub, target_doc, attach_statement=None):
 	)
 
 
-def pay_link_html(sub, target_doc):
+def pay_link_html(sub, target_doc, paid_card=""):
 	"""A Paystack "Pay now" button for a submitted, unpaid Sales Invoice, or ""
 	when the subscription has no pay link, Paystack is not installed or set up,
-	or the link fails. A pay link problem never holds back the invoice email."""
+	or the link fails. A pay link problem never holds back the invoice email.
+	When the saved card was just charged, a "no action needed" line instead."""
+	if paid_card:
+		return (
+			'<p style="font-family:Arial,Helvetica,sans-serif">'
+			'This invoice has been paid from your card ending {0}. No action is needed.</p>'
+		).format(escape(paid_card))
 	if not sub.get("include_pay_link"):
 		return ""
 	if target_doc.doctype != "Sales Invoice" or target_doc.docstatus != 1:
