@@ -6,7 +6,16 @@ from html import escape
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, add_months, cint, flt, format_date, getdate, nowdate
+from frappe.utils import (
+	add_days,
+	add_months,
+	cint,
+	flt,
+	format_date,
+	getdate,
+	nowdate,
+	validate_email_address,
+)
 
 from custom_subscription.statement import get_statement_attachment
 
@@ -359,3 +368,32 @@ def resend_email(name, document_name, attach_statement=None):
 
 	send_email(sub, target, cint(sub.get("attach_statement") if attach_statement is None else attach_statement))
 	return recipients
+
+
+@frappe.whitelist()
+def send_statement(customer, company, recipients):
+	"""Email the customer's 12-month statement on its own, with no invoice
+	(Customer form, Create > Send Statement). The recipients come from the
+	browser, so they are validated here."""
+	frappe.only_for(("Accounts User", "Accounts Manager", "System Manager"))
+	frappe.has_permission("Customer", "read", customer, throw=True)
+	frappe.has_permission("Company", "read", company, throw=True)
+
+	emails = [e.strip() for e in validate_email_address(recipients or "", throw=True).split(",") if e.strip()]
+	if not emails:
+		frappe.throw(_("Enter at least one email address"))
+
+	customer_name = frappe.db.get_value("Customer", customer, "customer_name") or customer
+	frappe.sendmail(
+		recipients=emails,
+		subject=_("Statement of Account - {0}").format(customer_name),
+		message=(
+			'<p style="font-family:Arial,Helvetica,sans-serif">Dear {0},</p>'
+			'<p style="font-family:Arial,Helvetica,sans-serif">'
+			"Please find attached your statement of account.</p>"
+		).format(escape(customer_name)) + EMAIL_SIGNATURE,
+		attachments=[get_statement_attachment(company, customer)],
+		reference_doctype="Customer",
+		reference_name=customer,
+	)
+	return emails
