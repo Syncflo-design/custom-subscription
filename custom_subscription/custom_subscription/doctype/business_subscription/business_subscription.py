@@ -370,14 +370,52 @@ def resend_email(name, document_name, attach_statement=None):
 	return recipients
 
 
+def greeting_name(customer, emails):
+	"""First name for "Dear ...": the customer's contact that holds the first
+	matching recipient address, else the customer's primary contact."""
+	for email in emails:
+		row = frappe.db.sql(
+			"""select c.first_name from `tabContact` c
+			join `tabContact Email` ce on ce.parent = c.name and ce.parenttype = 'Contact'
+			join `tabDynamic Link` dl on dl.parent = c.name and dl.parenttype = 'Contact'
+			where dl.link_doctype = 'Customer' and dl.link_name = %s and ce.email_id = %s
+				and ifnull(c.first_name, '') != ''
+			limit 1""",
+			(customer, email),
+		)
+		if row:
+			return row[0][0]
+
+	primary = frappe.db.get_value("Customer", customer, "customer_primary_contact")
+	return frappe.db.get_value("Contact", primary, "first_name") if primary else None
+
+
+def check_statement_access(customer, company):
+	"""A statement exposes the customer's ledger: accounts roles only, and the
+	caller must be able to read this customer and company."""
+	frappe.only_for(("Accounts User", "Accounts Manager", "System Manager"))
+	frappe.has_permission("Customer", "read", customer, throw=True)
+	frappe.has_permission("Company", "read", company, throw=True)
+
+
+@frappe.whitelist()
+def view_statement(customer, company, ref_date=None):
+	"""Show the statement PDF in the browser before it is sent (View buttons on
+	the Send Statement and Re-send Invoice dialogs). ref_date anchors the
+	period exactly as the email does: today, or the invoice date."""
+	check_statement_access(customer, company)
+	attachment = get_statement_attachment(company, customer, getdate(ref_date) if ref_date else None)
+	frappe.local.response.filename = attachment["fname"]
+	frappe.local.response.filecontent = attachment["fcontent"]
+	frappe.local.response.type = "pdf"
+
+
 @frappe.whitelist()
 def send_statement(customer, company, recipients):
 	"""Email the customer's 12-month statement on its own, with no invoice
 	(Customer form, Create > Send Statement). The recipients come from the
 	browser, so they are validated here."""
-	frappe.only_for(("Accounts User", "Accounts Manager", "System Manager"))
-	frappe.has_permission("Customer", "read", customer, throw=True)
-	frappe.has_permission("Company", "read", company, throw=True)
+	check_statement_access(customer, company)
 
 	emails = [e.strip() for e in validate_email_address(recipients or "", throw=True).split(",") if e.strip()]
 	if not emails:
@@ -391,7 +429,7 @@ def send_statement(customer, company, recipients):
 			'<p style="font-family:Arial,Helvetica,sans-serif">Dear {0},</p>'
 			'<p style="font-family:Arial,Helvetica,sans-serif">'
 			"Please find attached your statement of account.</p>"
-		).format(escape(customer_name)) + EMAIL_SIGNATURE,
+		).format(escape(greeting_name(customer, emails) or customer_name)) + EMAIL_SIGNATURE,
 		attachments=[get_statement_attachment(company, customer)],
 		reference_doctype="Customer",
 		reference_name=customer,

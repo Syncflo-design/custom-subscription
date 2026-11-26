@@ -55,6 +55,18 @@ function resend_invoice(frm, subs) {
                 description: __("Statement for the 12 months to the end of the month before the invoice date."),
             },
         ],
+        secondary_action_label: __("View Statement"),
+        secondary_action() {
+            const params = new URLSearchParams({
+                customer: frm.doc.customer,
+                company: frm.doc.company,
+                ref_date: frm.doc.posting_date,
+            });
+            window.open(
+                "/api/method/custom_subscription.custom_subscription.doctype.business_subscription.business_subscription.view_statement?" +
+                    params.toString()
+            );
+        },
         primary_action_label: __("Send"),
         primary_action(values) {
             frappe.call({

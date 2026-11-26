@@ -67,6 +67,19 @@ function send_statement(frm) {
                 )}</p>`,
             },
         ],
+        secondary_action_label: __("View"),
+        secondary_action() {
+            const company = dialog.get_value("company");
+            if (!company) {
+                frappe.msgprint(__("Pick a company first."));
+                return;
+            }
+            const params = new URLSearchParams({ customer: frm.doc.name, company });
+            window.open(
+                "/api/method/custom_subscription.custom_subscription.doctype.business_subscription.business_subscription.view_statement?" +
+                    params.toString()
+            );
+        },
         primary_action_label: __("Send"),
         primary_action(values) {
             frappe.call({
